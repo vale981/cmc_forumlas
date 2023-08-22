@@ -1,0 +1,154 @@
+#+PROPERTY: header-args :session basic_estimates :kernel python :pandoc no :async yes :noweb yes
+
+This is some quik-n-dirty code to get some rough numbers.
+I'm not proud of it, but it does the job.
+
+I neglect the shifts in the diagonals of the capactance matrix for
+now, as they're all very minor.
+
+* Boilerplate
+Setup code and module imports
+#+begin_src jupyter-python
+  import numpy as np
+  import pint
+  from math import *
+  from cmc_formulas import *
+  import cmc_formulas.typical_values as T
+  from cmc_formulas.typical_values import *
+#+end_src
+
+#+RESULTS:
+
+
+* Typical Values
+Here, we print the typical values that i've taken from
+[cite:@Blais2004] and [cite:@Gao2021a].
+
+** Resonator
+#+begin_src jupyter-python
+  T.CPW
+#+end_src
+
+#+RESULTS:
+: namespace(Z_r=50 <Unit('ohm')>,
+:           v_0=130000000.0 <Unit('meter / second')>,
+:           d=1 <Unit('centimeter')>,
+:           l=153.84615384615384 <Unit('picofarad / meter')>,
+:           c=384.6153846153846 <Unit('nanohenry / meter')>,
+:           C_r=1.5384615384615383 <Unit('picofarad')>,
+:           L_r=3.846153846153846 <Unit('nanohenry')>,
+:           ω_0=40.84070449666731 <Unit('gigahertz')>)
+
+
+
+** Qubit
+#+begin_src jupyter-python
+  T.Transmon
+#+end_src
+
+#+RESULTS:
+: namespace(E_C=400 <Unit('dirac_constant * megahertz')>,
+:           E_J=25 <Unit('dirac_constant * gigahertz')>,
+:           C_Σ=0.30426685072349346 <Unit('picofarad')>,
+:           ω_q=8.544271909999159 <Unit('gigahertz')>,
+:           α=0.4 <Unit('gigahertz')>)
+
+* Inter-Qubit (Bus) Coupling
+The coherence time of Transmons in on the order of
+\(\SI{1}{\micro\second}\) [cite:@Blais2021], so that the oscillation
+half-time \(T_{1/2}\) time in [[id:694996d4-b387-4591-830f-6181fedc81a8][The Model for the CMC Project]] should be
+shorter than that.
+
+#+begin_src jupyter-python :results none
+  T_12 = 1 * ureg.microsecond
+#+end_src
+
+With this we can calculate the coupling capacitance between Transmon
+and bus.
+
+#+begin_src jupyter-python
+  cc = formulas.C_c(T_12, T.Transmon.C_Σ, T.Transmon.E_J, T.CPW.ω_0)
+  cc
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+0.006433226005815454 picofarad
+:END:
+
+The corresponding oscillator/qubit coupling strength \(g\) is
+#+begin_src jupyter-python
+  g = formulas.g(T.CPW.ω_0, T.Transmon.C_Σ, cc, T.Transmon.E_J)
+  g
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+0.22523569360942175 gigahertz
+:END:
+
+This is is well below the detuning
+#+begin_src jupyter-python
+  formulas.Δ(T.Transmon.E_C, T.Transmon.E_J, T.CPW.ω_0)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+32.296432586668146 gigahertz
+:END:
+
+Also, the anharmonicity is much smaller than \(Δ\)
+#+begin_src jupyter-python
+  (T.Transmon.E_C / ureg.hbar).to(ureg.gigahertz)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+0.4 gigahertz
+:END:
+
+There is a lot of play in the qubit and resonator frequency.
+
+It is important to keep \(C_c\ll C_Σ,C_B\) and \(g\ll \abs{Δ}\lesssim ω_q +
+ω_B\). Otherwise, everything variale.
+
+* Drive
+The readout's restriction is the anharmonicity, although this
+constraint is weak, as we can use DRAG [cite:@Blais2021].
+
+The question is: what is a typical pulse amplitude?
+I've found numbers in [cite:@Bardin] that say \(\SIrange{50}{500}{\micro\volt}\)
+are normal.
+
+This is the (rough) limit on the coupling to the drive.
+#+begin_src jupyter-python
+  formulas.C_d_max(T.Transmon.E_C, T.Transmon.E_J, T.V_Dmax)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+0.000338819106349506 picofarad
+:END:
+
+This is much smaller than the coupling to the bus and corresponds to
+drive times that are much greater than
+#+begin_src jupyter-python
+  (2 * np.pi / T.Transmon.α).to(ureg.microsecond)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+0.015707963267948967 microsecond
+:END:
+
+which is still \(1/10\) of \(T_{1/2}\). This could get tight, but
+thanks to DRAG this shouldn't be a big problem. Maybe we can also
+detune the Qubit before flipping it.
+
+
+
+* Readout
+More work needs to be done on the readout.  It is ok, to couple the
+readout more weakly to the qubit than the buss, as long as the shift
+produced in the resonator resonance is larger than it's linewidth. The
+linewidth puts a constrain on the coupling to the transmission line.

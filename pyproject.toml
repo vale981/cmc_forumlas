@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "cmc-formulas"
+version = "0.1.0"
+description = ""
+authors = ["Valentin Boettcher <hiro@protagon.space>"]
+readme = "README.md"
+packages = [{include = "cmc_formulas"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+scipy = "^1.11.2"
+numpy = "^1.25.2"
+pint = "^0.22"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

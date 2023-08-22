@@ -1,0 +1,11 @@
+:PROPERTIES:
+:ID:       1905f3b2-0c1d-47e4-af51-ee6e07449386
+:END:
+#+title: CMC Formulas
+
+Implemented here are some rule-of-thumb formulas from my Theory
+modeling taken from [[id:16e42979-5321-4acb-b01a-0407fff4a959][Derivation of Physical Parameters for the CMC
+Project]].
+
+[[file:basic_estimates.org][In this notebook]], I'm calculating the basic orders of magnitudes that
+we should target.
