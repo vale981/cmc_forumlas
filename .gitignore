@@ -1,0 +1,5 @@
+.devenv
+/.direnv/
+/.venv/
+/__pycache__/
+/cmc_formulas/__pycache__/
