@@ -33,14 +33,14 @@ Here, we print the typical values that i've taken from
 : namespace(Z_r=50 <Unit('ohm')>,
 :           v_0=130000000.0 <Unit('meter / second')>,
 :           d=1 <Unit('centimeter')>,
-:           l=153.84615384615384 <Unit('picofarad / meter')>,
+:           l=153846.15384615381 <Unit('femtofarad / meter')>,
 :           c=384.6153846153846 <Unit('nanohenry / meter')>,
-:           C_r=1.5384615384615383 <Unit('picofarad')>,
+:           C_r=1538.461538461538 <Unit('femtofarad')>,
 :           L_r=3.846153846153846 <Unit('nanohenry')>,
-:           ω_0=1 <Unit('gigahertz')>)
+:           ω_0=7.5398223686155035 <Unit('gigahertz')>)
 
 #+begin_src jupyter-python
-  T.CPW.ω_0 = Q_(1, "gigahertz")
+  T.CPW.ω_0 = Q_(1.2, "gigahertz") * 2 * np.pi
 #+end_src
 
 #+RESULTS:
@@ -51,13 +51,86 @@ Here, we print the typical values that i've taken from
 #+end_src
 
 #+RESULTS:
-: namespace(E_C=400 <Unit('dirac_constant * megahertz')>,
-:           E_J=25 <Unit('dirac_constant * gigahertz')>,
-:           C_Σ=0.30426685072349346 <Unit('picofarad')>,
-:           ω_q=8.544271909999159 <Unit('gigahertz')>,
-:           α=0.4 <Unit('gigahertz')>)
+: namespace(E_C=200 <Unit('dirac_constant * megahertz * pi')>,
+:           E_J=10000 <Unit('dirac_constant * megahertz * pi')>,
+:           C_Σ=193.70229324659127 <Unit('femtofarad')>,
+:           ω_q=11.938052083641214 <Unit('gigahertz')>,
+:           α=0.6283185307179586 <Unit('gigahertz')>)
 
-* Inter-Qubit (Bus) Coupling
+
+#+begin_src jupyter-python
+  T.Transmon.ω_q / (2*np.pi)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+1.9 gigahertz
+:END:
+
+#+begin_src jupyter-python
+(T.Transmon.E_J/T.Transmon.E_C).to(ureg.dimensionless)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+50.0 dimensionless
+:END:
+
+
+#+begin_src jupyter-python
+  formulas.ω_p(T.Transmon.E_C, T.Transmon.E_J) / (2*np.pi)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+2.0 gigahertz
+:END:
+
+
+
+* Our Qubit
+Let's make a standard transmon with a ratio of \(E_J/E_C= 50\) and a
+frequency of \(\SI{5}{\giga\hertz}\).
+#+begin_src jupyter-python
+  transmon = T.TransmonQubit.from_angular_frequency_and_transmon_ratio(5 * ureg.gigahertz * 2 * np.pi, 50)
+  print(transmon.overview())
+#+end_src
+
+#+RESULTS:
+: ω:      31.41592653589793 gigahertz
+: ω/2π:   5.0 gigahertz
+: E_J:    82.67349088394192 dirac_constant * gigahertz
+: E_C:    1.6534698176788385 dirac_constant * gigahertz
+: f_J:    13.157894736842106 gigahertz * planck_constant
+: f_C:    0.2631578947368421 gigahertz * planck_constant
+: ratio:  50.0 dimensionless
+
+
+* Bus CPW
+I'm just eyeballing this for now, but the bus should be below the
+qubit so that we have some leeway with tuning the qubit interaction
+and the readout strength.
+
+#+begin_src jupyter-python
+  bus = T.CoplanarWaveguide(length = 1.5 * ureg.cm)
+  bus.f
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+4.333333333333334 gigahertz
+:END:
+
+This produces a detuning
+#+begin_src jupyter-python
+  transmon.Δ(bus)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+4.18879020478639 gigahertz
+:END:
+
 The coherence time of Transmons in on the order of
 \(\SI{1}{\micro\second}\) [cite:@Blais2021], so that the oscillation
 half-time \(T_{1/2}\) time in [[id:694996d4-b387-4591-830f-6181fedc81a8][The Model for the CMC Project]] should be
@@ -71,50 +144,55 @@ With this we can calculate the coupling capacitance between Transmon
 and bus.
 
 #+begin_src jupyter-python
-  cc = formulas.C_c(T_12, T.Transmon.C_Σ, T.Transmon.E_J, T.CPW.ω_0)
+  cc = formulas.C_c(T_12, transmon.C_Σ, transmon.E_J, bus.ω)
   cc
 #+end_src
 
 #+RESULTS:
 :RESULTS:
-0.1269852924637137 picofarad
+0.8889520149652524 femtofarad
 :END:
 
 The corresponding oscillator/qubit coupling strength \(g\) is
 #+begin_src jupyter-python
-  g = formulas.g(T.CPW.ω_0, T.Transmon.C_Σ, cc, T.Transmon.E_J)
-  g
+  transmon.g(bus, cc)
 #+end_src
 
 #+RESULTS:
 :RESULTS:
-0.10886006891679147 gigahertz
+0.08111557351947217 gigahertz
 :END:
 
 This is is well below the detuning
 #+begin_src jupyter-python
-  formulas.Δ(T.Transmon.E_C, T.Transmon.E_J, T.CPW.ω_0)
+  transmon.g(bus, cc) / transmon.Δ(bus)
 #+end_src
 
 #+RESULTS:
 :RESULTS:
-7.544271909999159 gigahertz
+0.019364916731037074 dimensionless
 :END:
 
-Also, the anharmonicity is much smaller than \(Δ\)
-#+begin_src jupyter-python
-  (T.Transmon.E_C / ureg.hbar).to(ureg.gigahertz)
-#+end_src
 
-#+RESULTS:
-:RESULTS:
-0.4 gigahertz
-:END:
-
-There is a lot of play in the qubit and resonator frequency.
 
 It is important to keep \(C_c\ll C_Σ,C_B\) and \(g\ll \abs{Δ}\lesssim ω_q +
 ω_B\). Otherwise, everything variale.
+Also, the anharmonicity is much smaller than \(Δ\). Basically
+everything in the following should be small (\(\sim .01\)).
+
+#+begin_src jupyter-python
+print(T.dispersive_metrics(transmon, bus, cc))
+#+end_src
+
+#+RESULTS:
+: {'Anharmonicity, α/Δ': 0.3947368421052633, 'Coupling Strength, g/Δ': 0.019364916731037074, 'RWA counter-rotating': 0.0714285714285714, 'Coupling/Transmon Cap': 0.012077024843609918, 'Coupling/CPW Cap': 0.00038521253981827614}
+
+
+As we can see, there is a lot of play in most things, but the
+anharmonicity may be reduced. This can be done either by reducing the
+qubit frequency while keeping the detuning constant or decreasing the
+transmon ratio \(E_J/E_C\).
+
 
 * Drive
 The readout's restriction is the anharmonicity, although this
@@ -131,7 +209,7 @@ This is the (rough) limit on the coupling to the drive.
 
 #+RESULTS:
 :RESULTS:
-0.000338819106349506 picofarad
+0.35825758655858 femtofarad
 :END:
 
 This is much smaller than the coupling to the bus and corresponds to
@@ -142,7 +220,7 @@ drive times that are much greater than
 
 #+RESULTS:
 :RESULTS:
-0.015707963267948967 microsecond
+0.01 microsecond
 :END:
 
 which is still \(1/10\) of \(T_{1/2}\). This could get tight, but
@@ -152,7 +230,5 @@ detune the Qubit before flipping it.
 
 
 * Readout
-More work needs to be done on the readout.  It is ok, to couple the
-readout more weakly to the qubit than the buss, as long as the shift
-produced in the resonator resonance is larger than it's linewidth. The
-linewidth puts a constrain on the coupling to the transmission line.
+The readout should be *above* the qubit in frequency!!!!! This is /really/
+important (see christobals talk). Basically
