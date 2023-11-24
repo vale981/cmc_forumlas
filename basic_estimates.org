@@ -112,23 +112,23 @@ qubit so that we have some leeway with tuning the qubit interaction
 and the readout strength.
 
 #+begin_src jupyter-python
-  bus = T.CoplanarWaveguide(length = 1.5 * ureg.cm)
+  bus = T.CoplanarWaveguide(length = 1.6 * ureg.cm)
   bus.f
 #+end_src
 
 #+RESULTS:
 :RESULTS:
-4.333333333333334 gigahertz
+4.0625 gigahertz
 :END:
 
 This produces a detuning
 #+begin_src jupyter-python
-  transmon.Δ(bus)
+  T.Δ(transmon, bus)
 #+end_src
 
 #+RESULTS:
 :RESULTS:
-4.18879020478639 gigahertz
+5.890486225480863 gigahertz
 :END:
 
 The coherence time of Transmons in on the order of
@@ -150,29 +150,18 @@ and bus.
 
 #+RESULTS:
 :RESULTS:
-0.8889520149652524 femtofarad
+1.124445239154514 femtofarad
 :END:
 
 The corresponding oscillator/qubit coupling strength \(g\) is
 #+begin_src jupyter-python
-  transmon.g(bus, cc)
+  T.g(transmon, bus, cc)
 #+end_src
 
 #+RESULTS:
 :RESULTS:
-0.08111557351947217 gigahertz
+0.09619123726213973 gigahertz
 :END:
-
-This is is well below the detuning
-#+begin_src jupyter-python
-  transmon.g(bus, cc) / transmon.Δ(bus)
-#+end_src
-
-#+RESULTS:
-:RESULTS:
-0.019364916731037074 dimensionless
-:END:
-
 
 
 It is important to keep \(C_c\ll C_Σ,C_B\) and \(g\ll \abs{Δ}\lesssim ω_q +
@@ -185,13 +174,15 @@ print(T.dispersive_metrics(transmon, bus, cc))
 #+end_src
 
 #+RESULTS:
-: {'Anharmonicity, α/Δ': 0.3947368421052633, 'Coupling Strength, g/Δ': 0.019364916731037074, 'RWA counter-rotating': 0.0714285714285714, 'Coupling/Transmon Cap': 0.012077024843609918, 'Coupling/CPW Cap': 0.00038521253981827614}
+: {'Anharmonicity, α/Δ': 0.28070175438596484, 'Coupling Strength, g/Δ': 0.016329931618554505, 'RWA counter-rotating': 0.10344827586206899, 'Coupling/Transmon Cap': 0.015276362345698466, 'Coupling/CPW Cap': 0.00045680587840652136}
 
 
 As we can see, there is a lot of play in most things, but the
 anharmonicity may be reduced. This can be done either by reducing the
 qubit frequency while keeping the detuning constant or decreasing the
-transmon ratio \(E_J/E_C\).
+transmon ratio \(E_J/E_C\). *Note that the CPW internal capacitance is
+only a typical value here. I need more details on the actual design to
+be more precise.*
 
 
 * Drive
@@ -232,3 +223,33 @@ detune the Qubit before flipping it.
 * Readout
 The readout should be *above* the qubit in frequency!!!!! This is /really/
 important (see christobals talk). Basically
+
+Let's start with the values from [cite:@Jeffrey2014] (note that the
+impedance of the cpw is \(\SI{50}{\ohm}\)) and i basically made up the
+rest. The only things that enter are the frequency and the impedance.
+
+#+begin_src jupyter-python
+  readout = T.CoplanarWaveguide(length = .95 * ureg.cm)
+  readout.f
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+6.842105263157895 gigahertz
+:END:
+
+#+begin_src jupyter-python
+  T.g(transmon, readout, cc) / (2*np.pi)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+0.02038412287477586 gigahertz
+:END:
+
+#+begin_src jupyter-python
+print(T.dispersive_metrics(transmon, readout, cc))
+#+end_src
+
+#+RESULTS:
+: {'Anharmonicity, α/Δ': 0.14285714285714285, 'Coupling Strength, g/Δ': 0.011065666703449752, 'RWA counter-rotating': 0.15555555555555556, 'Coupling/Transmon Cap': 0.012077024843609918, 'Coupling/CPW Cap': 0.0006082303260288571}

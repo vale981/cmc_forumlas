@@ -63,12 +63,6 @@ class TransmonQubit:
 {self.__class__.__name__}({self.E_C}, {self.E_J})
         """
 
-    def Δ(self, cpw: CoplanarWaveguide):
-        return self.ω - cpw.ω
-
-    def g(self, cpw: CoplanarWaveguide, C_c):
-        return formulas.g(cpw.ω, self.C_Σ, C_c, self.E_J, cpw.Z)
-
     def overview(self):
         return f"""ω:      {self.ω}
 ω/2π:   {self.f}
@@ -136,15 +130,33 @@ ratio:  {self.ratio}"""
         return cls(charge_energy, charge_energy * ratio)
 
 
+def Δ(transmon: TransmonQubit, cpw: CoplanarWaveguide):
+    return transmon.ω - cpw.ω
+
+
+def g(transmon: TransmonQubit, cpw: CoplanarWaveguide, C_c):
+    return formulas.g(cpw.ω, transmon.C_Σ, C_c, transmon.E_J, cpw.Z)
+
+
+def g(transmon: TransmonQubit, cpw: CoplanarWaveguide, C_c):
+    return formulas.g(cpw.ω, transmon.C_Σ, C_c, transmon.E_J, cpw.Z)
+
+
 def dimless_mag(quantity):
     return quantity.to(ureg.dimensionless).magnitude
 
 
 def dispersive_metrics(transmon: TransmonQubit, cpw: CoplanarWaveguide, C_c):
     return {
-        "Anharmonicity, α/Δ": dimless_mag(transmon.E_C / (transmon.Δ(cpw) * ureg.hbar)),
-        "Coupling Strength, g/Δ": dimless_mag(transmon.g(cpw, C_c) / transmon.Δ(cpw)),
-        "RWA counter-rotating": dimless_mag(transmon.Δ(cpw) / (transmon.ω + cpw.ω)),
+        "Anharmonicity, α/Δ": dimless_mag(
+            transmon.E_C / abs(Δ(transmon, cpw) * ureg.hbar)
+        ),
+        "Coupling Strength, g/Δ": dimless_mag(
+            g(transmon, cpw, C_c) / abs(Δ(transmon, cpw))
+        ),
+        "RWA counter-rotating": dimless_mag(
+            abs(Δ(transmon, cpw)) / (transmon.ω + cpw.ω)
+        ),
         "Coupling/Transmon Cap": dimless_mag(C_c / transmon.C_Σ),
         "Coupling/CPW Cap": dimless_mag(C_c / cpw.C),
     }
