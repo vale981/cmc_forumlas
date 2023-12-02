@@ -37,7 +37,7 @@ Here, we print the typical values that i've taken from
 :           c=384.6153846153846 <Unit('nanohenry / meter')>,
 :           C_r=1538.461538461538 <Unit('femtofarad')>,
 :           L_r=3.846153846153846 <Unit('nanohenry')>,
-:           ω_0=7.5398223686155035 <Unit('gigahertz')>)
+:           ω_0=40.84070449666731 <Unit('gigahertz')>)
 
 #+begin_src jupyter-python
   T.CPW.ω_0 = Q_(1.2, "gigahertz") * 2 * np.pi
@@ -51,7 +51,8 @@ Here, we print the typical values that i've taken from
 #+end_src
 
 #+RESULTS:
-: namespace(E_C=200 <Unit('dirac_constant * megahertz * pi')>,
+: namespace(ratio=50,
+:           E_C=200 <Unit('dirac_constant * megahertz * pi')>,
 :           E_J=10000 <Unit('dirac_constant * megahertz * pi')>,
 :           C_Σ=193.70229324659127 <Unit('femtofarad')>,
 :           ω_q=11.938052083641214 <Unit('gigahertz')>,
@@ -88,6 +89,16 @@ Here, we print the typical values that i've taken from
 
 
 
+
+* Design Goals
+- we want to be able to intialize a qubit in one corner, run the
+  dynamics and read out
+- to lessen the costraints we detune the qubit from the others: the
+  diabatic limit tells us of fast we should detune
+- the safe detuning shoudln't be too small compared to the qubit
+  frequency to reduce suszeptibility to noise
+- all lamb shifts should be smaller than the safe detuning
+
 * Our Qubit
 Let's make a standard transmon with a ratio of \(E_J/E_C= 50\) and a
 frequency of \(\SI{5}{\giga\hertz}\).
@@ -111,34 +122,93 @@ I'm just eyeballing this for now, but the bus should be below the
 qubit so that we have some leeway with tuning the qubit interaction
 and the readout strength.
 
+A detuning of a gigahertz is generally a good idea
 #+begin_src jupyter-python
-  bus = T.CoplanarWaveguide(length = 1.6 * ureg.cm)
+  bus = T.CoplanarWaveguide.from_ω(ω = 2 * pi * 4 * ureg.gigahertz)
   bus.f
 #+end_src
 
 #+RESULTS:
 :RESULTS:
-4.0625 gigahertz
+4.000000000000001 gigahertz
 :END:
 
-This produces a detuning
 #+begin_src jupyter-python
-  T.Δ(transmon, bus)
+  bus.length
 #+end_src
 
 #+RESULTS:
 :RESULTS:
-5.890486225480863 gigahertz
+1.6250000000000002 centimeter
+:END:
+
+
+This produces a detuning
+#+begin_src jupyter-python
+  T.Δ(transmon, bus) / (2*np.pi)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+0.9999999999999994 gigahertz
 :END:
 
 The coherence time of Transmons in on the order of
-\(\SI{1}{\micro\second}\) [cite:@Blais2021], so that the oscillation
+\(\SI{80}{\micro\second}\) [cite:@Blais2021], so that the oscillation
 half-time \(T_{1/2}\) time in [[id:694996d4-b387-4591-830f-6181fedc81a8][The Model for the CMC Project]] should be
-shorter than that.
+shorter than that. The detuning speed limit says that
+\(T_{1/2}\gg\SI{.007}{\micro\second}\).
 
-#+begin_src jupyter-python :results none
-  T_12 = 1 * ureg.microsecond
+This value is not set in stone, but i think it is a good starting
+point: short enough so that the "safe" detuning is not too small, long
+enough to comfortably allow for the detuning of a qubit.
+#+begin_src jupyter-python
+  T_12 = .1 * ureg.microsecond
+  J = np.pi / T_12 * ureg.hbar
+  (J / (ureg.hbar)).to(ureg.gigahertz)
 #+end_src
+
+#+RESULTS:
+:RESULTS:
+0.031415926535897934 gigahertz
+:END:
+
+This is how far we have to detune to completely stop the dynamics.
+#+begin_src jupyter-python
+  safe_detune = (J / (ureg.hbar)).to(ureg.megahertz) * 100
+  safe_detune / (2 * np.pi)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+499.99999999999994 megahertz
+:END:
+Detuning one qubit that far completely stops the dynamics.
+
+This basically constraints the coupling strength: if it was any larger
+we would have to detune farther... (500 MHz seem fine).
+
+Detuning this far can be achieved in [cite:@Blais2021]
+#+begin_src jupyter-python
+  τ_Δ = (safe_detune  / T.detune_speed).to(ureg.nanosecond)
+  τ_Δ
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+0.49999999999999994 nanosecond
+:END:
+
+This is extremely far below \(T_{1/2}\).
+#+begin_src jupyter-python
+  (τ_Δ / T_12).to(ureg.dimensionless)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+0.004999999999999999 dimensionless
+:END:
+The detuning speed is set a little optimistic anyways.
 
 With this we can calculate the coupling capacitance between Transmon
 and bus.
@@ -150,19 +220,70 @@ and bus.
 
 #+RESULTS:
 :RESULTS:
-1.124445239154514 femtofarad
+3.729804378666111 femtofarad
 :END:
 
 The corresponding oscillator/qubit coupling strength \(g\) is
 #+begin_src jupyter-python
-  T.g(transmon, bus, cc)
+  g_bus = T.g(transmon, bus, cc); g_bus / (2*np.pi)
 #+end_src
 
 #+RESULTS:
 :RESULTS:
-0.09619123726213973 gigahertz
+0.04999999999999995 gigahertz
 :END:
 
+The ratio \(g/Δ\) is
+#+begin_src jupyter-python
+  T.g(transmon, bus, cc)/T.Δ(transmon, bus)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+0.049999999999999975 dimensionless
+:END:
+
+#+begin_src jupyter-python
+  critical_photon_number(transmon, bus, cc_ro)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+15.402137452740726 dimensionless
+:END:
+
+Let's look at the lamb-shift.
+#+begin_src jupyter-python
+  T.lamb_shift(transmon, bus, cc) / transmon.ω
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+0.0004999999999999991 dimensionless
+:END:
+
+So the exchange term is negligible.
+#+begin_src jupyter-python
+  (T.exchange_coupling(transmon, bus, cc) / J).to(ureg.dimensionless)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+0.06578947368421045 dimensionless
+:END:
+
+
+The decoupling ratio \(Δ/Δ'\) is
+#+begin_src jupyter-python
+  T.Δ(transmon, bus) / (T.Δ(transmon, bus) + 1 * ureg.gigahertz * 2 * np.pi)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+0.49999999999999983 dimensionless
+:END:
+
+which is not much... but we can't go any better...
 
 It is important to keep \(C_c\ll C_Σ,C_B\) and \(g\ll \abs{Δ}\lesssim ω_q +
 ω_B\). Otherwise, everything variale.
@@ -174,7 +295,7 @@ print(T.dispersive_metrics(transmon, bus, cc))
 #+end_src
 
 #+RESULTS:
-: {'Anharmonicity, α/Δ': 0.28070175438596484, 'Coupling Strength, g/Δ': 0.016329931618554505, 'RWA counter-rotating': 0.10344827586206899, 'Coupling/Transmon Cap': 0.015276362345698466, 'Coupling/CPW Cap': 0.00045680587840652136}
+: {'Anharmonicity, α/Δ': 0.26315789473684226, 'Coupling Strength, g/Δ': 0.049999999999999975, 'RWA counter-rotating': 0.11111111111111104, 'Coupling/Transmon Cap': 0.05067195909862064, 'Coupling/CPW Cap': 0.0014919217514664446}
 
 
 As we can see, there is a lot of play in most things, but the
@@ -182,8 +303,105 @@ anharmonicity may be reduced. This can be done either by reducing the
 qubit frequency while keeping the detuning constant or decreasing the
 transmon ratio \(E_J/E_C\). *Note that the CPW internal capacitance is
 only a typical value here. I need more details on the actual design to
-be more precise.*
+be more precise.
 
+* Readout
+As we detune and then measure, we are not constrained by \(T_{1/2}\)
+here. I chose the values to be similar to [cite:@Jeffrey2014] (similar
+\(g/Δ\)).
+#+begin_src jupyter-python
+  readout_transmon = T.TransmonQubit.from_angular_frequency_and_transmon_ratio(transmon.ω + safe_detune, 50)
+
+  readout = T.CoplanarWaveguide.from_ω(ω = 2 * pi * 1.26 * ureg.gigahertz + readout_transmon.ω)
+  readout.f, readout_transmon.f
+#+end_src
+
+#+RESULTS:
+| 6.76 | <Unit | (gigahertz) | > | 5.499999999999999 | <Unit | (gigahertz) | > |
+
+This produces a detuning
+#+begin_src jupyter-python
+  T.Δ(readout_transmon, readout) / (2*np.pi)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+-1.260000000000001 gigahertz
+:END:
+
+The corresponding oscillator/qubit coupling strength \(g\) is
+#+begin_src jupyter-python
+  cc_ro = 4 * ureg.femtofarad
+  T.g(readout_transmon, readout, cc_ro) / (2*np.pi)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+0.09968351212375548 gigahertz
+:END:
+
+The ratio \(g/Δ\) is
+#+begin_src jupyter-python
+  T.g(readout_transmon, readout, cc_ro)/T.Δ(readout_transmon, readout)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+-0.079113898510917 dimensionless
+:END:
+
+#+begin_src jupyter-python
+  critical_photon_number(readout_transmon, readout, cc_ro)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+19.801150541789227 dimensionless
+:END:
+
+Seems ok.
+
+The dispersive shift \(χ\) is
+#+begin_src jupyter-python
+  (T.dispersive_shift(readout_transmon, readout, cc_ro) / (2 * np.pi)).to(ureg.megahertz)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+-1.473333285921808 megahertz
+:END:
+
+which is not /extremely/ large. [cite:@Walter2017] had 7 megahertz.
+
+The lamb shift of the qubit (while it is participating in the
+dynamics) is nice and small, well below the critical
+shift.
+#+begin_src jupyter-python
+  (T.lamb_shift(transmon, readout, cc_ro) / (2 * np.pi)).to(ureg.megahertz)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+-4.745353647488288 megahertz
+:END:
+
+
+It is important to keep \(C_c\ll C_Σ,C_B\) and \(g\ll \abs{Δ}\lesssim ω_q +
+ω_B\). Otherwise, everything variale.
+Also, the anharmonicity is much smaller than \(Δ\). Basically
+everything in the following should be small (\(\sim .01\)).
+
+#+begin_src jupyter-python
+print(T.dispersive_metrics(readout_transmon, readout, cc_ro))
+#+end_src
+
+#+RESULTS:
+: {'Anharmonicity, α/Δ': 0.24122807017543857, 'Coupling Strength, g/Δ': 0.0823322893527073, 'RWA counter-rotating': 0.09836065573770493, 'Coupling/Transmon Cap': 0.05977702780049465, 'Coupling/CPW Cap': 0.00268}
+
+
+More input is needed here:
+- quality factor of cavity after coupling to transmission line...
+- this will show us, if the disperive shift is large enough
 
 * Drive
 The readout's restriction is the anharmonicity, although this
@@ -200,8 +418,11 @@ This is the (rough) limit on the coupling to the drive.
 
 #+RESULTS:
 :RESULTS:
-0.35825758655858 femtofarad
+0.2239109915991125 femtofarad
 :END:
+
+This depends on how hard we can attenuate the drive. Lower is better,
+generally, as we don't want the qubit to relax into the drive line.
 
 This is much smaller than the coupling to the bus and corresponds to
 drive times that are much greater than
@@ -217,39 +438,3 @@ drive times that are much greater than
 which is still \(1/10\) of \(T_{1/2}\). This could get tight, but
 thanks to DRAG this shouldn't be a big problem. Maybe we can also
 detune the Qubit before flipping it.
-
-
-
-* Readout
-The readout should be *above* the qubit in frequency!!!!! This is /really/
-important (see christobals talk). Basically
-
-Let's start with the values from [cite:@Jeffrey2014] (note that the
-impedance of the cpw is \(\SI{50}{\ohm}\)) and i basically made up the
-rest. The only things that enter are the frequency and the impedance.
-
-#+begin_src jupyter-python
-  readout = T.CoplanarWaveguide(length = .95 * ureg.cm)
-  readout.f
-#+end_src
-
-#+RESULTS:
-:RESULTS:
-6.842105263157895 gigahertz
-:END:
-
-#+begin_src jupyter-python
-  T.g(transmon, readout, cc) / (2*np.pi)
-#+end_src
-
-#+RESULTS:
-:RESULTS:
-0.02038412287477586 gigahertz
-:END:
-
-#+begin_src jupyter-python
-print(T.dispersive_metrics(transmon, readout, cc))
-#+end_src
-
-#+RESULTS:
-: {'Anharmonicity, α/Δ': 0.14285714285714285, 'Coupling Strength, g/Δ': 0.011065666703449752, 'RWA counter-rotating': 0.15555555555555556, 'Coupling/Transmon Cap': 0.012077024843609918, 'Coupling/CPW Cap': 0.0006082303260288571}

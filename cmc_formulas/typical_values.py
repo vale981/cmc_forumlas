@@ -23,7 +23,8 @@ Transmon.C_Σ = formulas.C_Σ(Transmon.E_C)
 Transmon.ω_q = formulas.ω_q(Transmon.E_C, Transmon.E_J)
 Transmon.α = (Transmon.E_C / ureg.hbar).to(ureg.gigahertz)
 
-V_Dmax = 100 * ureg.microvolt
+V_Dmax = 160 * ureg.microvolt
+detune_speed = 2 * np.pi * ureg.gigahertz / ureg.nanosecond
 
 
 class CoplanarWaveguide:
@@ -31,6 +32,15 @@ class CoplanarWaveguide:
         self._impedance = impedance
         self._speed_of_light = speed_of_light
         self._length = length
+
+    @classmethod
+    def from_ω(cls, impedance=CPW.Z_r, speed_of_light=CPW.v_0, ω=CPW.ω_0):
+        d = speed_of_light / ω * np.pi
+        return cls(impedance, speed_of_light, d)
+
+    @property
+    def length(self):
+        return self._length.to(ureg.cm)
 
     @property
     def L(self):
@@ -138,10 +148,6 @@ def g(transmon: TransmonQubit, cpw: CoplanarWaveguide, C_c):
     return formulas.g(cpw.ω, transmon.C_Σ, C_c, transmon.E_J, cpw.Z)
 
 
-def g(transmon: TransmonQubit, cpw: CoplanarWaveguide, C_c):
-    return formulas.g(cpw.ω, transmon.C_Σ, C_c, transmon.E_J, cpw.Z)
-
-
 def dimless_mag(quantity):
     return quantity.to(ureg.dimensionless).magnitude
 
@@ -160,3 +166,31 @@ def dispersive_metrics(transmon: TransmonQubit, cpw: CoplanarWaveguide, C_c):
         "Coupling/Transmon Cap": dimless_mag(C_c / transmon.C_Σ),
         "Coupling/CPW Cap": dimless_mag(C_c / cpw.C),
     }
+
+
+def lamb_shift(transmon: TransmonQubit, cpw: CoplanarWaveguide, C_c):
+    coup = g(transmon, cpw, C_c)
+
+    return (coup**2) / (Δ(transmon, cpw))
+
+
+def dispersive_shift(transmon: TransmonQubit, cpw: CoplanarWaveguide, C_c):
+    coup = g(transmon, cpw, C_c)
+    det = Δ(transmon, cpw)
+    E_C = transmon.E_C / ureg.hbar
+
+    return -(coup**2 * E_C / (det * (det - E_C)))
+
+
+def exchange_coupling(transmon: TransmonQubit, cpw: CoplanarWaveguide, C_c):
+    coup = g(transmon, cpw, C_c)
+    return transmon.E_C * coup**2 / (2 * Δ(transmon, cpw) ** 2)
+
+
+def critical_photon_number(transmon: TransmonQubit, cpw: CoplanarWaveguide, C_c):
+    coupling = g(transmon, cpw, C_c)
+    return (
+        1
+        / 3
+        * ((Δ(transmon, cpw) - transmon.E_C / ureg.hbar) ** 2 / (4 * coupling**2) - 1)
+    )
